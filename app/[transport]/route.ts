@@ -51,4 +51,31 @@ const handler = createMcpHandler(
   },
 );
 
-export { handler as GET, handler as POST, handler as DELETE, handler as HEAD, handler as OPTIONS };
+const healthHeaders = {
+  "content-type": "application/json",
+  "access-control-allow-origin": "*",
+};
+
+export const GET = async () =>
+  new Response(JSON.stringify({ status: "ok" }), {
+    status: 200,
+    headers: healthHeaders,
+  });
+
+export const HEAD = async () =>
+  new Response(null, {
+    status: 200,
+    headers: healthHeaders,
+  });
+
+export const OPTIONS = async () =>
+  new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
+      "access-control-allow-headers": "*",
+    },
+  });
+
+export { handler as POST, handler as DELETE };
