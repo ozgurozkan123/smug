@@ -4,85 +4,51 @@ import { z } from "zod";
 const handler = createMcpHandler(
   async (server) => {
     server.tool(
-      "do-nuclei",
-      "Execute Nuclei, an advanced vulnerability scanner that uses YAML-based templates to detect security vulnerabilities, misconfigurations, and exposures in web applications and infrastructure. Nuclei offers fast scanning with a vast template library covering various security checks.",
+      "do-masscan",
+      "Run masscan with specified target. MASSCAN is a fast port scanner. The primary input parameters are the IP addresses/ranges you want to scan, and the port numbers.",
       {
-        url: z.string().url().describe("Target URL to run nuclei"),
-        tags: z.array(z.string()).optional().describe("Tags to run nuclei; for multiple choices use comma separation"),
+        target: z
+          .string()
+          .describe(`Target information. Example: 1.1.1.1
+            1.1.1.1
+            `),
+        port: z
+          .string()
+          .describe(`Target port. Example: 1234
+               0-65535
+                `),
+        masscan_args: z
+          .array(z.string())
+          .describe(`Additional masscan arguments 
+            --max-rate 
+            `),
       },
-      async ({ url, tags }) => {
-        const nucleiArgs: string[] = ["-u", url, "-silent"];
+      async ({ target, port, masscan_args }) => {
+        const args: string[] = ["-p" + port, target, ...masscan_args];
 
-        if (tags && tags.length > 0) {
-          nucleiArgs.push("-tags", tags.join(","));
-        }
-
-        const formattedArgs = nucleiArgs
-          .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
+        const formattedArgs = args
+          .map((arg) => (/(\s|\")/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg))
           .join(" ");
 
-        const command = `nuclei ${formattedArgs}`;
+        const command = `masscan ${formattedArgs}`;
 
         return {
           content: [
             {
               type: "text",
-              text: `Nuclei cannot be executed in this serverless environment.\n\nRun it locally where nuclei is installed:\n\n${command}\n\nNotes:\n- Ensure the nuclei binary is available in your PATH or provide the full path.\n- Templates and configuration must exist in your environment.\n- Tags are passed directly as provided.`,
+              text: `masscan cannot be executed in this serverless environment.\n\nRun it locally where masscan is installed (root/administrator privileges may be required for raw sockets):\n\n${command}\n\nNotes:\n- Ensure the masscan binary is available in your PATH or provide the full path.\n- The command mirrors the original MCP tool arguments. Adjust as needed for your environment.\n- Network access is not available in this serverless deployment; only the command is generated.`,
             },
           ],
         };
-      }
-    );
-
-    server.tool(
-      "get-nuclei-tags",
-      "Get Nuclei Tags",
-      {},
-      async () => {
-        try {
-          const response = await fetch(
-            "https://raw.githubusercontent.com/projectdiscovery/nuclei-templates/refs/heads/main/TEMPLATES-STATS.json"
-          );
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const data = await response.json();
-          const tags = Array.isArray(data?.tags)
-            ? data.tags.map((tag: { name?: string }) => tag.name).filter(Boolean)
-            : [];
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(tags, null, 2),
-              },
-            ],
-          };
-        } catch (error: any) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Failed to fetch nuclei tags: ${error?.message ?? error}`,
-              },
-            ],
-          };
-        }
       }
     );
   },
   {
     capabilities: {
       tools: {
-        "do-nuclei": {
+        "do-masscan": {
           description:
-            "Execute Nuclei, an advanced vulnerability scanner that uses YAML-based templates to detect security vulnerabilities, misconfigurations, and exposures in web applications and infrastructure. Nuclei offers fast scanning with a vast template library covering various security checks.",
-        },
-        "get-nuclei-tags": {
-          description: "Get Nuclei Tags",
+            "Run masscan with specified target. MASSCAN is a fast port scanner. The primary input parameters are the IP addresses/ranges you want to scan, and the port numbers.",
         },
       },
     },
