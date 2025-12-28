@@ -1,6 +1,10 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const handler = createMcpHandler(
   async (server) => {
     server.tool(
@@ -56,20 +60,25 @@ const healthHeaders = {
   "access-control-allow-origin": "*",
 };
 
-export const GET = async () =>
-  new Response(JSON.stringify({ status: "ok" }), {
+export const GET = async () => {
+  console.log("GET /mcp health check hit");
+  return new Response(JSON.stringify({ status: "ok" }), {
     status: 200,
     headers: healthHeaders,
   });
+};
 
-export const HEAD = async () =>
-  new Response(null, {
+export const HEAD = async () => {
+  console.log("HEAD /mcp health check hit");
+  return new Response(null, {
     status: 200,
     headers: healthHeaders,
   });
+};
 
-export const OPTIONS = async () =>
-  new Response(null, {
+export const OPTIONS = async () => {
+  console.log("OPTIONS /mcp preflight");
+  return new Response(null, {
     status: 204,
     headers: {
       "access-control-allow-origin": "*",
@@ -77,5 +86,6 @@ export const OPTIONS = async () =>
       "access-control-allow-headers": "*",
     },
   });
+};
 
 export { handler as POST, handler as DELETE };
