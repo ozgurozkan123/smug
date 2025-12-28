@@ -4,39 +4,67 @@ import { z } from "zod";
 const handler = createMcpHandler(
   async (server) => {
     server.tool(
-      "do-masscan",
-      "Run masscan with specified target. MASSCAN is a fast port scanner. The primary input parameters are the IP addresses/ranges you want to scan, and the port numbers.",
+      "do-arjun",
+      "Run Arjun to discover hidden HTTP parameters",
       {
-        target: z
+        url: z
           .string()
-          .describe(`Target information. Example: 1.1.1.1
-            1.1.1.1
-            `),
-        port: z
+          .url()
+          .describe("Target URL to scan for hidden parameters"),
+        textFile: z
           .string()
-          .describe(`Target port. Example: 1234
-               0-65535
-                `),
-        masscan_args: z
-          .array(z.string())
-          .describe(`Additional masscan arguments 
-            --max-rate 
-            `),
+          .optional()
+          .describe("Path to file containing multiple URLs"),
+        wordlist: z
+          .string()
+          .optional()
+          .describe("Path to custom wordlist file"),
+        method: z
+          .enum(["GET", "POST", "JSON", "HEADERS"])
+          .optional()
+          .describe("HTTP method to use for scanning (default: GET)"),
+        rateLimit: z
+          .number()
+          .optional()
+          .describe("Maximum requests per second (default: 9999)"),
+        chunkSize: z
+          .number()
+          .optional()
+          .describe("Chunk size. The number of parameters to be sent at once"),
       },
-      async ({ target, port, masscan_args }) => {
-        const args: string[] = ["-p" + port, target, ...masscan_args];
+      async ({ url, textFile, wordlist, method, rateLimit, chunkSize }) => {
+        if (!url && !textFile) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Please provide either a target URL (url) or a file containing URLs (textFile) to build the Arjun command.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const args: string[] = [];
+
+        if (url) args.push("-u", url);
+        if (textFile) args.push("-f", textFile);
+        if (wordlist) args.push("-w", wordlist);
+        if (method) args.push("-m", method);
+        if (rateLimit !== undefined) args.push("--rate-limit", String(rateLimit));
+        if (chunkSize !== undefined) args.push("--chunk-size", String(chunkSize));
 
         const formattedArgs = args
-          .map((arg) => (/(\s|\")/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg))
+          .map((arg) => (/(\s|\")/.test(arg) ? `\"${arg.replace(/\"/g, "\\\"")}\"` : arg))
           .join(" ");
 
-        const command = `masscan ${formattedArgs}`;
+        const command = `arjun ${formattedArgs}`.trim();
 
         return {
           content: [
             {
               type: "text",
-              text: `masscan cannot be executed in this serverless environment.\n\nRun it locally where masscan is installed (root/administrator privileges may be required for raw sockets):\n\n${command}\n\nNotes:\n- Ensure the masscan binary is available in your PATH or provide the full path.\n- The command mirrors the original MCP tool arguments. Adjust as needed for your environment.\n- Network access is not available in this serverless deployment; only the command is generated.`,
+              text: `Arjun cannot be executed inside this serverless environment.\n\nRun it locally where Arjun is installed (Python/pip or binary) using the generated command:\n\n${command}\n\nNotes:\n- Ensure Arjun is installed and available in your PATH.\n- The arguments mirror the original MCP tool options. Adjust paths and privileges as needed.\n- Network access and subprocess execution are not available on this deployment; only the command string is provided.`,
             },
           ],
         };
@@ -46,9 +74,8 @@ const handler = createMcpHandler(
   {
     capabilities: {
       tools: {
-        "do-masscan": {
-          description:
-            "Run masscan with specified target. MASSCAN is a fast port scanner. The primary input parameters are the IP addresses/ranges you want to scan, and the port numbers.",
+        "do-arjun": {
+          description: "Run Arjun to discover hidden HTTP parameters",
         },
       },
     },
