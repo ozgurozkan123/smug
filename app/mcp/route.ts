@@ -272,7 +272,7 @@ const handler = createMcpHandler(
         "do-wpscan": { description: "Scan WordPress sites with WPScan" },
       },
     },
-  },
+  } as any,
   {
     basePath: "",
     verboseLogs: true,
