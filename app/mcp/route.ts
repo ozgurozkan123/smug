@@ -1,7 +1,8 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
-const baseHandler = createMcpHandler(
+// IMPORTANT: Use createMcpHandler directly without manual header patching.
+const handler = createMcpHandler(
   async (server) => {
     // Arjun
     server.tool(
@@ -25,10 +26,12 @@ const baseHandler = createMcpHandler(
         if (chunkSize !== undefined) args.push("--chunk-size", String(chunkSize));
         const command = `arjun ${args.join(" ")}`.trim();
         return {
-          content: [{
-            type: "text",
-            text: `Run this locally where Arjun is installed:\n${command}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Run this locally where Arjun is installed:\n${command}`,
+            },
+          ],
         };
       }
     );
@@ -157,13 +160,15 @@ const baseHandler = createMcpHandler(
       {
         target: z.string().describe("Target IP/CIDR"),
         ports: z.string().describe("Ports e.g., 1-65535 or 80,443"),
-        rate: z.number().optional().describe("Packets per second")
+        rate: z.number().optional().describe("Packets per second"),
       },
       async ({ target, ports, rate }) => {
         const args = ["-p", ports, target];
         if (rate) args.push("--rate", String(rate));
         const command = `masscan ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally with root privileges:\n${command}` }] };
+        return {
+          content: [{ type: "text", text: `Run locally with root privileges:\n${command}` }],
+        };
       }
     );
 
@@ -227,10 +232,12 @@ const baseHandler = createMcpHandler(
       "Query crt.sh for subdomains",
       { domain: z.string().describe("Target domain") },
       async ({ domain }) => ({
-        content: [{
-          type: "text",
-          text: `Use curl to query crt.sh:\ncurl "https://crt.sh/?q=%25.${domain}&output=json"`
-        }],
+        content: [
+          {
+            type: "text",
+            text: `Use curl to query crt.sh:\ncurl "https://crt.sh/?q=%25.${domain}&output=json"`,
+          },
+        ],
       })
     );
 
@@ -249,7 +256,6 @@ const baseHandler = createMcpHandler(
         return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
       }
     );
-
   },
   {
     capabilities: {
@@ -272,7 +278,7 @@ const baseHandler = createMcpHandler(
         "do-wpscan": { description: "Scan WordPress sites with WPScan" },
       },
     },
-  } as any,
+  },
   {
     basePath: "",
     verboseLogs: true,
@@ -281,17 +287,5 @@ const baseHandler = createMcpHandler(
   }
 );
 
-const handler = async (req: Request) => {
-  const headers = new Headers(req.headers);
-  const accept = headers.get("accept") ?? "";
-  if (!accept.includes("application/json")) {
-    headers.append("accept", "application/json");
-  }
-  if (!accept.includes("text/event-stream")) {
-    headers.append("accept", "text/event-stream");
-  }
-  const patched = new Request(req, { headers });
-  return baseHandler(patched as any);
-};
-
+// CRITICAL: use named exports for Next.js App Router
 export { handler as GET, handler as POST, handler as DELETE };
