@@ -1,7 +1,7 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
-const handler = createMcpHandler(
+const baseHandler = createMcpHandler(
   async (server) => {
     // Arjun
     server.tool(
@@ -280,5 +280,18 @@ const handler = createMcpHandler(
     disableSse: true,
   }
 );
+
+const handler = async (req: Request) => {
+  const headers = new Headers(req.headers);
+  const accept = headers.get("accept") ?? "";
+  if (!accept.includes("application/json")) {
+    headers.append("accept", "application/json");
+  }
+  if (!accept.includes("text/event-stream")) {
+    headers.append("accept", "text/event-stream");
+  }
+  const patched = new Request(req, { headers });
+  return baseHandler(patched as any);
+};
 
 export { handler as GET, handler as POST, handler as DELETE };
