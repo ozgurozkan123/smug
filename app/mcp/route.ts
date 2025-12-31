@@ -1,289 +1,105 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
-// IMPORTANT: Use createMcpHandler directly without manual header patching.
 const handler = createMcpHandler(
   async (server) => {
-    // Arjun
+    // Amass - Advanced subdomain enumeration tool
+    // Based on https://github.com/cyproxio/mcp-for-security/tree/main/amass-mcp
     server.tool(
-      "do-arjun",
-      "Run Arjun to discover hidden HTTP parameters",
+      "amass",
+      "Advanced subdomain enumeration and reconnaissance tool",
       {
-        url: z.string().url().describe("Target URL to scan for hidden parameters"),
-        textFile: z.string().optional().describe("Path to file containing multiple URLs"),
-        wordlist: z.string().optional().describe("Path to custom wordlist"),
-        method: z.enum(["GET", "POST", "JSON", "HEADERS"]).optional().describe("HTTP method"),
-        rateLimit: z.number().optional().describe("Requests per second"),
-        chunkSize: z.number().optional().describe("Chunk size for parameters"),
+        subcommand: z.enum(["enum", "intel"]).describe(`Specify the Amass operation mode:
+            - intel: Gather intelligence about target domains from various sources
+            - enum: Perform subdomain enumeration and network mapping`),
+        domain: z.string().optional().describe("Target domain to perform reconnaissance against (e.g., example.com)"),
+        intel_whois: z.boolean().optional().describe("Whether to include WHOIS data in intelligence gathering (true/false)"),
+        intel_organization: z.string().optional().describe("Organization name to search for during intelligence gathering (e.g., 'Example Corp')"),
+        enum_type: z.enum(["active", "passive"]).optional().describe(`Enumeration approach type:
+            - active: Includes DNS resolution and potential network interactions with target
+            - passive: Only uses information from third-party sources without direct target interaction`),
+        enum_brute: z.boolean().optional().describe("Whether to perform brute force subdomain discovery (true/false)"),
+        enum_brute_wordlist: z.string().optional().describe("Path to custom wordlist file for brute force operations (e.g., '/path/to/wordlist.txt')")
       },
-      async ({ url, textFile, wordlist, method, rateLimit, chunkSize }) => {
-        const args: string[] = [];
-        if (url) args.push("-u", url);
-        if (textFile) args.push("-f", textFile);
-        if (wordlist) args.push("-w", wordlist);
-        if (method) args.push("-m", method);
-        if (rateLimit !== undefined) args.push("--rate-limit", String(rateLimit));
-        if (chunkSize !== undefined) args.push("--chunk-size", String(chunkSize));
-        const command = `arjun ${args.join(" ")}`.trim();
+      async ({ subcommand, domain, intel_whois, intel_organization, enum_type, enum_brute, enum_brute_wordlist }) => {
+        const amassArgs: string[] = [subcommand];
+
+        // Handle different subcommands
+        if (subcommand === "enum") {
+          if (!domain) {
+            return {
+              content: [{
+                type: "text",
+                text: "Error: Domain parameter is required for 'enum' subcommand"
+              }]
+            };
+          }
+
+          amassArgs.push("-d", domain);
+
+          // Handle enum type
+          if (enum_type === "passive") {
+            amassArgs.push("-passive");
+          }
+
+          // Handle brute force options
+          if (enum_brute === true) {
+            amassArgs.push("-brute");
+            if (enum_brute_wordlist) {
+              amassArgs.push("-w", enum_brute_wordlist);
+            }
+          }
+        } else if (subcommand === "intel") {
+          if (!domain && !intel_organization) {
+            return {
+              content: [{
+                type: "text",
+                text: "Error: Either domain or organization parameter is required for 'intel' subcommand"
+              }]
+            };
+          }
+
+          if (domain) {
+            amassArgs.push("-d", domain);
+            if (intel_whois === true) {
+              amassArgs.push("-whois");
+            }
+          }
+
+          if (intel_organization) {
+            amassArgs.push("-org", `'${intel_organization}'`);
+          }
+          
+          if (intel_whois === true && !domain) {
+            amassArgs.push("-whois");
+          }
+        }
+
+        const command = `amass ${amassArgs.join(" ")}`;
+
         return {
-          content: [
-            {
-              type: "text",
-              text: `Run this locally where Arjun is installed:\n${command}`,
-            },
-          ],
-        };
-      }
-    );
-
-    // Amass
-    server.tool(
-      "do-amass",
-      "Enumerate subdomains with Amass",
-      {
-        domain: z.string().describe("Target domain"),
-        passive: z.boolean().optional().describe("Use passive mode only"),
-        output: z.string().optional().describe("Output file path"),
-      },
-      async ({ domain, passive, output }) => {
-        const args = ["enum", "-d", domain];
-        if (passive) args.push("-passive");
-        if (output) args.push("-o", output);
-        const command = `amass ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // Assetfinder
-    server.tool(
-      "do-assetfinder",
-      "Find subdomains with assetfinder",
-      { domain: z.string().describe("Target domain") },
-      async ({ domain }) => ({
-        content: [{ type: "text", text: `Run locally:\nassetfinder ${domain}` }],
-      })
-    );
-
-    // httpx
-    server.tool(
-      "do-httpx",
-      "Probe hosts with httpx",
-      {
-        targets: z.array(z.string()).nonempty().describe("List of hosts/domains"),
-        ports: z.string().optional().describe("Comma separated ports (e.g., 80,443,8080)"),
-      },
-      async ({ targets, ports }) => {
-        const args: string[] = ["-u", targets.join(","), "-silent"];
-        if (ports) args.push("-p", ports);
-        const command = `httpx ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // FFUF
-    server.tool(
-      "do-ffuf",
-      "Fuzz paths with ffuf",
-      {
-        url: z.string().describe("Target URL, use FUZZ keyword"),
-        wordlist: z.string().describe("Path to wordlist"),
-        extensions: z.array(z.string()).optional().describe("File extensions (e.g., php,html)"),
-      },
-      async ({ url, wordlist, extensions }) => {
-        const args = ["-u", url, "-w", wordlist];
-        if (extensions && extensions.length > 0) args.push("-e", extensions.join(","));
-        const command = `ffuf ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // SQLMap
-    server.tool(
-      "do-sqlmap",
-      "SQL injection testing with sqlmap",
-      {
-        url: z.string().describe("Target URL with parameters"),
-        dump: z.boolean().optional().describe("Dump database contents"),
-      },
-      async ({ url, dump }) => {
-        const args = ["-u", url];
-        if (dump) args.push("--dump");
-        const command = `sqlmap ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // Nmap
-    server.tool(
-      "do-nmap",
-      "Run nmap network scanner",
-      {
-        target: z.string().describe("Target host or network"),
-        flags: z.string().optional().describe("Additional flags, default -sV"),
-      },
-      async ({ target, flags }) => {
-        const command = `nmap ${flags ?? "-sV"} ${target}`.trim();
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // Nuclei
-    server.tool(
-      "do-nuclei",
-      "Run nuclei vulnerability scanner",
-      {
-        target: z.string().describe("Target URL or host"),
-        templates: z.string().optional().describe("Path to templates or directory"),
-      },
-      async ({ target, templates }) => {
-        const args = ["-u", target];
-        if (templates) args.push("-t", templates);
-        const command = `nuclei ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // Waybackurls
-    server.tool(
-      "do-waybackurls",
-      "Fetch historical URLs with waybackurls",
-      { domain: z.string().describe("Target domain") },
-      async ({ domain }) => ({
-        content: [{ type: "text", text: `Run locally:\nwaybackurls ${domain}` }],
-      })
-    );
-
-    // Masscan
-    server.tool(
-      "do-masscan",
-      "Fast port scan with masscan",
-      {
-        target: z.string().describe("Target IP/CIDR"),
-        ports: z.string().describe("Ports e.g., 1-65535 or 80,443"),
-        rate: z.number().optional().describe("Packets per second"),
-      },
-      async ({ target, ports, rate }) => {
-        const args = ["-p", ports, target];
-        if (rate) args.push("--rate", String(rate));
-        const command = `masscan ${args.join(" ")}`;
-        return {
-          content: [{ type: "text", text: `Run locally with root privileges:\n${command}` }],
-        };
-      }
-    );
-
-    // Katana
-    server.tool(
-      "do-katana",
-      "Crawl with katana",
-      {
-        url: z.string().describe("Target URL"),
-        depth: z.number().optional().describe("Crawl depth"),
-      },
-      async ({ url, depth }) => {
-        const args = ["-u", url];
-        if (depth !== undefined) args.push("-d", String(depth));
-        const command = `katana ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // shuffledns
-    server.tool(
-      "do-shuffledns",
-      "DNS brute force with shuffledns",
-      {
-        domain: z.string().describe("Target domain"),
-        wordlist: z.string().optional().describe("Path to wordlist"),
-        resolvers: z.string().optional().describe("Path to resolvers file"),
-      },
-      async ({ domain, wordlist, resolvers }) => {
-        const args = ["-d", domain];
-        if (wordlist) args.push("-w", wordlist);
-        if (resolvers) args.push("-r", resolvers);
-        const command = `shuffledns ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
-      }
-    );
-
-    // SSLScan
-    server.tool(
-      "do-sslscan",
-      "Analyze SSL/TLS config with sslscan",
-      { target: z.string().describe("Host:port, e.g., example.com:443") },
-      async ({ target }) => ({
-        content: [{ type: "text", text: `Run locally:\nsslscan ${target}` }],
-      })
-    );
-
-    // Gowitness
-    server.tool(
-      "do-gowitness",
-      "Screenshot web pages with gowitness",
-      { url: z.string().describe("Target URL") },
-      async ({ url }) => ({
-        content: [{ type: "text", text: `Run locally:\ngowitness scan single --url ${url}` }],
-      })
-    );
-
-    // crt.sh lookup
-    server.tool(
-      "do-crtsh",
-      "Query crt.sh for subdomains",
-      { domain: z.string().describe("Target domain") },
-      async ({ domain }) => ({
-        content: [
-          {
+          content: [{
             type: "text",
-            text: `Use curl to query crt.sh:\ncurl "https://crt.sh/?q=%25.${domain}&output=json"`,
-          },
-        ],
-      })
-    );
-
-    // WPScan
-    server.tool(
-      "do-wpscan",
-      "Scan WordPress sites with WPScan",
-      {
-        url: z.string().describe("Target site URL"),
-        apiToken: z.string().optional().describe("WPScan API token for vulnerability data"),
-      },
-      async ({ url, apiToken }) => {
-        const args = ["--url", url];
-        if (apiToken) args.push("--api-token", apiToken);
-        const command = `wpscan ${args.join(" ")}`;
-        return { content: [{ type: "text", text: `Run locally:\n${command}` }] };
+            text: `Run this command locally where Amass is installed:\n\n${command}\n\nNote: Amass is a CLI tool that requires local execution. Install it from https://github.com/owasp-amass/amass`
+          }]
+        };
       }
     );
   },
   {
     capabilities: {
       tools: {
-        "do-arjun": { description: "Run Arjun to discover hidden HTTP parameters" },
-        "do-amass": { description: "Enumerate subdomains with Amass" },
-        "do-assetfinder": { description: "Find subdomains with assetfinder" },
-        "do-httpx": { description: "Probe hosts with httpx" },
-        "do-ffuf": { description: "Fuzz paths with ffuf" },
-        "do-sqlmap": { description: "SQL injection testing with sqlmap" },
-        "do-nmap": { description: "Run nmap network scanner" },
-        "do-nuclei": { description: "Run nuclei vulnerability scanner" },
-        "do-waybackurls": { description: "Fetch historical URLs with waybackurls" },
-        "do-masscan": { description: "Fast port scan with masscan" },
-        "do-katana": { description: "Crawl with katana" },
-        "do-shuffledns": { description: "DNS brute force with shuffledns" },
-        "do-sslscan": { description: "Analyze SSL/TLS config with sslscan" },
-        "do-gowitness": { description: "Screenshot web pages with gowitness" },
-        "do-crtsh": { description: "Query crt.sh for subdomains" },
-        "do-wpscan": { description: "Scan WordPress sites with WPScan" },
-      },
-    },
+        amass: {
+          description: "Advanced subdomain enumeration and reconnaissance tool"
+        }
+      }
+    }
   },
   {
     basePath: "",
     verboseLogs: true,
     maxDuration: 60,
-    disableSse: true,
+    disableSse: true
   }
 );
 
