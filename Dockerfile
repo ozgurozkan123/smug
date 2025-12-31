@@ -17,8 +17,8 @@ COPY . .
 RUN pnpm run build
 
 ENV PORT=3000
-ENV HOST=0.0.0.0
+ENV HOSTNAME=0.0.0.0
 EXPOSE 3000
 
-# Start Next.js with correct host/port
-CMD ["pnpm", "start", "--", "-p", "3000", "-H", "0.0.0.0"]
+# Start Next.js - use node directly to avoid pnpm arg issues
+CMD ["node", "node_modules/next/dist/bin/next", "start", "-p", "3000", "-H", "0.0.0.0"]
